@@ -2,94 +2,160 @@
 // Store API endpoint as query URL
 const queryURL = "https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/all_week.geojson"
 
-// Build createMap function
-function createMap(volcanoes) {
+// Create a tile layer
+let streetmap = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+});
 
-    // Create a tile layer
-    let streetmap = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-    });
-    
-    // Create a baseMap object to hold a streetmap layer
-    let baseMaps = {
-        "Street Map": streetmap
-    };
+// Create the topography layer
+var topo = L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', {
+    attribution: 'Map data: &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors, <a href="http://viewfinderpanoramas.org">SRTM</a> | Map style: &copy; <a href="https://opentopomap.org">OpenTopoMap</a> (<a href="https://creativecommons.org/licenses/by-sa/3.0/">CC-BY-SA</a>)'
+});
 
-    // Create the map object with options
-    let map = L.map("map-id", {
-        layers: [streetmap]
-    });
+// Create the map object with options
+let map = L.map("map", {
+    center: [40.7, -94.5],
+    zoom: 3
+});
 
-    // Create a layer control, and pass it baseMaps and Volcanoes. Add teh layer control to the map
-    L.control.layers(baseMaps, {
-        collapsed: false
-    }).addTo(map)
+// Add streetmap to Map
+streetmap.addTo(map);
 
-    let info = L.control({
-        position: "bottomright"
-    });
+// Create a baseMap object to hold a streetmap layer
+let baseMaps = {
+    "Street Map": streetmap,
+    "Topography": topo
+};
 
-    // When the layer control is added, insert a div with teh class of 'legend'
-    info.onAdd = function() {
-        let div = L.DomUtil.create("div", "legend");
-        return div;
-    };
+// Create layers
+let tectonicplates = new L.LayerGroup();
+let earthquakes = new L.LayerGroup();
 
-    // Add the info legend to map
-    info.addTo(map);
-}
+// Create overlays
+let overlays = {
+    "Tectonic Plates": tectonicplates,
+    Earthquakes: earthquakes
+};
 
-// Build the createVolcanoes function to build the Volcano layer
-function createVolcanoes (response) {
-    // Pull volcation
-    let volcanoes = response.data
+// Create a layer control, and pass it baseMaps and Earthquakes. Add the layer control to the map
+L
+    .control
+    .layers(baseMaps, overlays, { collapsed: false })
+    .addTo(map);
 
-    //Initialize array to hold volcano markers
-    let volcanoMarkers = [];
+// Use d3 to pull geojson data
+d3.json("https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/all_week.geojson").then(function (data) {
 
-    // Loop through the volcanoes array
-    for (let index = 0; index < volcanoes.length; index++) {
-        let volcano = volcanoes[index];
-
-        // For each volcano, create a marker and bind a popup with the volcano's information
-        let volcanoMarker = L.marker([volcano.geometry.coordinates.latitude, volcano.geometry.coordinates.longitude])
-            .bindPopup("<h3>Magnitude" + volcano.features.mag + "</h3>");
-
-        // Add the marker to the volcanoMarker array
-            volcanoMarkers.push(volcanoMarker);
+    // Build style info
+    function styleInfo(feature) {
+        return {
+            opacity: 1,
+            fillOpacity: 1,
+            fillColor: getColor(feature.geometry.coordinates[2]),
+            color: "#000000",
+            radius: getRadius(feature.properties.mag),
+            stroke: true,
+            weight: 0.5
+        };
     }
 
-    // Create a layer group that's made from the volcano markers array, and pass it to the createMap function
-    createMap(L.layerGroup(volcanoMarkers));
+    // Create embedded function to build colors depending on magnitude
+    function getColor(magnitude) {
+        if (magnitude > 90) {
+            return "#ea2c2c";
+        }
+        if (magnitude > 70) {
+            return "#ea822c";
+        }
+        if (magnitude > 50) {
+            return "#ee9c00";
+        }
+        if (magnitude > 30) {
+            return "#eecc00";
+        }
+        if (magnitude > 10) {
+            return "#d4ee00";
+        }
+        return "#98ee00";
+    }
 
-}
+    // Create radius of bubble based on magnitude 
+    function getRadius(magnitude) {
+        if (magnitude === 0) {
+            return 1;
+        }
 
-//Perform a GET request to the query URL
-d3.json(queryURL).then(createVolcanoes);
+        return magnitude * 4;
+    }
 
-// d3.json(queryURL).then(function(data) {
-//     // Once a response is received, send data.features object to the createFeatures function
-//     createFeatures(data.features);
-// });
+    // Use geoJSON to parse through data
+    L.geoJson(data, {
 
-// Build function for legend
+        // Use geoJSON to parse latitude and longitude
+        pointToLayer: function (feature, latlng) {
+            return L.circleMarker(latlng);
+        },
 
+        // Establish style with previously created styleInfo
+        style: styleInfo,
 
-// Create a createFunction feature
-// function createFeatures () {
-//     //Define a function that will run once for each feature in teh features array
-//     // Give each feature a popup that describes a place and time of the earthquake
-//     function onEachFeature(feature,layer) {
-//         layer.bindPopup(`<h3>${feature.properties.place}</h3>`)
-//     }
-// }
+        // Extract magnitude and coordinates
+        onEachFeature: function (feature, layer) {
+            layer.bindPopup(
+                "Magnitude: "
+                + feature.properties.mag
+                + "<br>Depth: "
+                + feature.geometry.coordinates[2]
+                + "<br>Location: "
+                + feature.properties.place
+            );
+        }
+    
+    // Add to map
+    }).addTo(earthquakes);
 
+    earthquakes.addTo(map)
 
-// Use URL of the JSON to pull the data
+    // Establish Legend
+    let legend = L.control({
+        position: "bottomright"
+      });
+    
+      legend.onAdd = function () {
+        let div = L.DomUtil.create("div", "info legend");
+    
+        // Establish specific grades and color scheme for legend
+        let grades = [-10, 10, 30, 50, 70, 90];
+        let colors = [
+          "#98ee00",
+          "#d4ee00",
+          "#eecc00",
+          "#ee9c00",
+          "#ea822c",
+          "#ea2c2c"];
+    
+        // Create a for loop to loop grades established above
+        for (let i = 0; i < grades.length; i++) {
+          div.innerHTML += "<i style='background: "
+            + colors[i]
+            + "'></i> "
+            + grades[i]
+            + (grades[i + 1] ? "&ndash;" + grades[i + 1] + "<br>" : "+");
+        }
+        return div;
+      };
+    
+      // Add legend to map
+      legend.addTo(map);
+      d3.json("https://raw.githubusercontent.com/fraxen/tectonicplates/master/GeoJSON/PB2002_boundaries.json").then(function (platedata) {
+    
+      L.geoJson(platedata, {
+        color: "orange",
+        weight: 2
+      })
+        .addTo(tectonicplates);
+  
+        tectonicplates.addTo(map);
+    });
 
-// Import and visualize the data
-// Use Leaflet to create the map that plots all earthquakes from teh dataset based on their longitude and latitude
-
-// Include popups that provide additional informationa bout earthquake when its associated marker clicked
-
-// Create a legend that will provide context for the map data
+});
