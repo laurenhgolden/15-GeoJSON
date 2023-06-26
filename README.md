@@ -18,4 +18,4 @@ Perform the following tasks:
 -Put each dataset into separate overlays that can be turned on and off independently.
 -Add layer controls to your map.
 
-See the completed visualization HERE: 
+See the completed visualization HERE: https://laurenhgolden.github.io/15-GeoJSON/
